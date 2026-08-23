@@ -6,6 +6,9 @@ As required by GPL-3.0 Section 5, this file documents the modifications made to 
 
 ## Version history
 
+### 1.0.2
+- **Fixed green-tinted hair in captures.** Hair is semi-transparent, so its kept pixels blended with the green screen and came out with a green cast. The server now despills hair shots (clamping the green channel to what red and blue support), so captured hair keeps its true colour.
+
 ### 1.0.1
 - **Fixed green hair captures.** `ResetPedComponents` tinted the ped with
   `SetPedHairColor(ped, 45, 15)` — index 45 is in the unnatural (green/purple)

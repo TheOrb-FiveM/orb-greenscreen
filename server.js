@@ -11,7 +11,7 @@ const config = JSON.parse(LoadResourceFile(GetCurrentResourceName(), "config.jso
 
 try { if (!fs.existsSync(mainSavePath)) fs.mkdirSync(mainSavePath, { recursive: true }); } catch(e){}
 
-async function processAndSave(pngBuffer, fullFilePath) {
+async function processAndSave(pngBuffer, fullFilePath, despill) {
 	let image = await imagejs.Image.load(pngBuffer);
 	if (!image.alpha || image.channels < 4) {
 		const w = image.width, h = image.height;
@@ -26,6 +26,15 @@ async function processAndSave(pngBuffer, fullFilePath) {
 			const p = image.getPixelXY(x, y);
 			if (p[1] > 50 && p[1] > p[0] * 1.2 && p[1] > p[2] * 1.2) {
 				image.setPixelXY(x, y, [255, 255, 255, 0]);
+			} else if (despill) {
+				// Green-spill removal for hair: the ped's hair is semi-transparent,
+				// so kept pixels are a blend of hair + green screen and read green.
+				// Clamp the green channel to what red/blue support (standard despill),
+				// which neutralises the green cast without desaturating real colours.
+				const cap = Math.max(p[0], p[2]);
+				if (p[1] > cap) {
+					image.setPixelXY(x, y, [p[0], cap, p[2], p[3]]);
+				}
 			}
 		}
 	}
@@ -51,6 +60,12 @@ async function processAndSave(pngBuffer, fullFilePath) {
 }
 
 
+// Hair is clothing component 2 (`<gender>_2_<drawable>`); props are `<gender>_prop_…`
+// and every other component has a different number, so this only matches hair.
+function isHairFile(filename) {
+	return /^(male|female)_2_\d/.test(String(filename));
+}
+
 // Receive base64 capture from client's Lua bridge via TriggerLatentServerEvent
 onNet('orb-greenscreen:saveCapture', (filename, type, dataUrl) => {
 	console.log(`[orb-greenscreen] Received: ${filename}, data: ${dataUrl ? String(dataUrl).length : 0} chars`);
@@ -66,7 +81,7 @@ onNet('orb-greenscreen:saveCapture', (filename, type, dataUrl) => {
 	const buffer = Buffer.from(base64, 'base64');
 	if (buffer.length === 0) { console.error(`[orb-greenscreen] Empty buffer for ${filename}`); return; }
 
-	processAndSave(buffer, fullFilePath)
+	processAndSave(buffer, fullFilePath, isHairFile(filename))
 		.then(() => console.log(`[orb-greenscreen] Saved: ${filename}.png`))
 		.catch(err => { console.error(`[orb-greenscreen] Failed: ${filename}:`, err.message); try{fs.unlinkSync(fullFilePath);}catch(_){} });
 });
