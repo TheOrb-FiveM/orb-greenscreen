@@ -16,7 +16,7 @@ A clothing & prop image generator for FiveM — the companion tool for [**orb-cl
 
 ## Requirements
 
-- [`screencapture`](https://github.com/Alynva/fivem-screencapture) (or `screenshot-basic`)
+- [`screencapture`](https://github.com/itschip/screencapture) (or `screenshot-basic`)
 - [`ox_lib`](https://github.com/overextended/ox_lib)
 - [`yarn`](https://github.com/citizenfx/fivem/tree/master/ext/native-decls) — the built-in FiveM yarn resource (installs the Node dependencies on first start)
 
