@@ -196,6 +196,8 @@
     "y": -3409.83,
     "z": 20.91
   },
+  "frontRotation": 120,
+  "//__comment__//frontRotation": "In cameraSettings, a rotation.z equal to this is a straight-on shot; any other value is how many degrees the camera swings round the ped from there. The ped itself never turns.",
   "greenScreenRotation": {
     "x": 0,
     "y": 0,

@@ -6,6 +6,9 @@ As required by GPL-3.0 Section 5, this file documents the modifications made to 
 
 ## Version history
 
+### 1.0.3
+- **Fixed captures that showed the back of the head.** Before every capture the ped was turned with `SetEntityRotation` to the component's `rotation.z` (120 for masks) while it stood frozen with its tasks cleared every millisecond. That turn mostly did not take, which left the ped facing the camera (the picture everyone expected), but every so often it did, and the capture showed the ped from behind. The ped is now posed once, facing the camera, with `SetEntityHeading` verified against `GetEntityHeading`, and never turned again. Angled components (bags, ears, watches) are made by moving the **camera** round the ped by `rotation.z - frontRotation` degrees instead. `frontRotation` (default 120) is new in `config.json`; existing configs keep working unchanged.
+
 ### 1.0.2
 - **Fixed green-tinted hair in captures.** Hair is semi-transparent, so its kept pixels blended with the green screen and came out with a green cast. The server now despills hair shots (clamping the green channel to what red and blue support), so captured hair keeps its true colour.
 

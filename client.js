@@ -24,6 +24,41 @@ if (config.useQBVehicles) {
 	QBCore = exports[config.coreResourceName].GetCoreObject();
 }
 
+// ── Ped heading and camera ───────────────────────────────────────────
+// The ped is posed ONCE, facing the camera, and never turned again. Angled
+// shots (bags from behind, ears from the side) are made by moving the
+// CAMERA around the ped instead.
+//
+// Why: upstream turned the ped before every capture with SetEntityRotation.
+// On a frozen ped whose tasks are cleared every millisecond that turn
+// mostly does not take, and when it does the capture shows the back of the
+// head. A camera is ours alone, so where it stands is never in doubt.
+
+const FRONT_ROTATION = Number.isFinite(config.frontRotation) ? config.frontRotation : 120;
+let camAngle = null;
+
+// GTA heading h -> unit vector the entity faces.
+function dirFromHeading(h) {
+	const r = (h * Math.PI) / 180;
+	return { x: -Math.sin(r), y: Math.cos(r) };
+}
+
+// Put the ped on the spot facing the camera, and do not return until the
+// game agrees (heading within a degree), re-applying each frame if needed.
+async function posePed(entity) {
+	const h = config.greenScreenRotation.z;
+	SetEntityCoordsNoOffset(entity, config.greenScreenPosition.x, config.greenScreenPosition.y, config.greenScreenPosition.z, false, false, false);
+	for (let i = 0; i < 30; i++) {
+		SetEntityHeading(entity, h);
+		await Delay(0);
+		let diff = Math.abs(GetEntityHeading(entity) - h) % 360;
+		if (diff > 180) diff = 360 - diff;
+		if (diff < 1) return true;
+	}
+	console.log(`[orb-greenscreen] WARNING: ped heading did not settle on ${h} (is ${GetEntityHeading(entity)})`);
+	return false;
+}
+
 async function takeScreenshotForComponent(pedType, type, component, drawable, texture, cameraSettings) {
 	const cameraInfo = cameraSettings ? cameraSettings : config.cameraSettings[type][component];
 
@@ -31,39 +66,37 @@ async function takeScreenshotForComponent(pedType, type, component, drawable, te
 
 	await Delay(500);
 
-	if (!camInfo || camInfo.zPos !== cameraInfo.zPos || camInfo.fov !== cameraInfo.fov) {
+	// A component's `rotation.z` is kept from upstream: FRONT_ROTATION (120)
+	// is straight on, anything else is how far the camera orbits from there.
+	const angle = (cameraInfo.rotation ? cameraInfo.rotation.z : FRONT_ROTATION) - FRONT_ROTATION;
+
+	if (!camInfo || camInfo.zPos !== cameraInfo.zPos || camInfo.fov !== cameraInfo.fov || camAngle !== angle) {
 		camInfo = cameraInfo;
+		camAngle = angle;
 
-		if (cam) {
-			DestroyAllCams(true);
-			DestroyCam(cam, true);
-			cam = null;
-		}
-
-		SetEntityRotation(ped, config.greenScreenRotation.x, config.greenScreenRotation.y, config.greenScreenRotation.z, 0, false);
-		SetEntityCoordsNoOffset(ped, config.greenScreenPosition.x, config.greenScreenPosition.y, config.greenScreenPosition.z, false, false, false);
-
+		await posePed(ped);
 		await Delay(50);
 
 		const [playerX, playerY, playerZ] = GetEntityCoords(ped);
-		const [fwdX, fwdY, fwdZ] = GetEntityForwardVector(ped);
+		// Straight in front of the ped, then swung round by `angle`.
+		const dir = dirFromHeading(config.greenScreenRotation.z + angle);
+		const camPos = { x: playerX + dir.x * 1.2, y: playerY + dir.y * 1.2, z: playerZ + camInfo.zPos };
 
-		const fwdPos = {
-			x: playerX + fwdX * 1.2,
-			y: playerY + fwdY * 1.2,
-			z: playerZ + fwdZ + camInfo.zPos,
-		};
-
-		cam = CreateCamWithParams('DEFAULT_SCRIPTED_CAMERA', fwdPos.x, fwdPos.y, fwdPos.z, 0, 0, 0, camInfo.fov, true, 0);
-
+		if (!cam) {
+			cam = CreateCamWithParams('DEFAULT_SCRIPTED_CAMERA', camPos.x, camPos.y, camPos.z, 0, 0, 0, camInfo.fov, true, 0);
+		} else {
+			SetCamCoord(cam, camPos.x, camPos.y, camPos.z);
+			SetCamFov(cam, camInfo.fov);
+		}
 		PointCamAtCoord(cam, playerX, playerY, playerZ + camInfo.zPos);
 		SetCamActive(cam, true);
 		RenderScriptCams(true, false, 0, true, false, 0);
 	}
 
+	// Cheap insurance every capture: whatever else moved the ped, it faces
+	// the camera line before the shot.
+	await posePed(ped);
 	await Delay(50);
-
-	SetEntityRotation(ped, camInfo.rotation.x, camInfo.rotation.y, camInfo.rotation.z, 2, false);
 
 	emit('orb-greenscreen:doCapture', `${pedType}_${type == 'PROPS' ? 'prop_' : ''}${component}_${drawable}${texture ? `_${texture}`: ''}`, 'clothing');
 	await Delay(3000);
@@ -346,8 +379,7 @@ RegisterCommand('screenshot', async (source, args) => {
 			ped = PlayerPedId();
 
 			const pedType = modelHash === GetHashKey('mp_m_freemode_01') ? 'male' : 'female';
-			SetEntityRotation(ped, config.greenScreenRotation.x, config.greenScreenRotation.y, config.greenScreenRotation.z, 0, false);
-			SetEntityCoordsNoOffset(ped, config.greenScreenPosition.x, config.greenScreenPosition.y, config.greenScreenPosition.z, false, false, false);
+			await posePed(ped);
 			FreezeEntityPosition(ped, true);
 			await Delay(50);
 			SetPlayerControl(playerId, false);
@@ -417,7 +449,7 @@ RegisterCommand('screenshot', async (source, args) => {
 	DestroyAllCams(true);
 	DestroyCam(cam, true);
 	RenderScriptCams(false, false, 0, true, false, 0);
-	camInfo = null;
+	camInfo = null; camAngle = null;
 	cam = null;
 });
 
@@ -450,8 +482,7 @@ async function runScreenshotBatch({ genders, shouldCapture }) {
 		ped = PlayerPedId();
 
 		const pedType = modelHash === GetHashKey('mp_m_freemode_01') ? 'male' : 'female';
-		SetEntityRotation(ped, config.greenScreenRotation.x, config.greenScreenRotation.y, config.greenScreenRotation.z, 0, false);
-		SetEntityCoordsNoOffset(ped, config.greenScreenPosition.x, config.greenScreenPosition.y, config.greenScreenPosition.z, false, false, false);
+		await posePed(ped);
 		FreezeEntityPosition(ped, true);
 		await Delay(50);
 		SetPlayerControl(playerId, false);
@@ -522,7 +553,7 @@ async function runScreenshotBatch({ genders, shouldCapture }) {
 	DestroyAllCams(true);
 	DestroyCam(cam, true);
 	RenderScriptCams(false, false, 0, true, false, 0);
-	camInfo = null;
+	camInfo = null; camAngle = null;
 	cam = null;
 }
 
@@ -631,8 +662,7 @@ RegisterCommand('customscreenshot', async (source, args) => {
 			}, 1);
 
 			const pedType = modelHash === GetHashKey('mp_m_freemode_01') ? 'male' : 'female';
-			SetEntityRotation(ped, config.greenScreenRotation.x, config.greenScreenRotation.y, config.greenScreenRotation.z, 0, false);
-			SetEntityCoordsNoOffset(ped, config.greenScreenPosition.x, config.greenScreenPosition.y, config.greenScreenPosition.z, false, false, false);
+			await posePed(ped);
 			FreezeEntityPosition(ped, true);
 			await Delay(50);
 			SetPlayerControl(playerId, false);
@@ -724,7 +754,7 @@ RegisterCommand('customscreenshot', async (source, args) => {
 	DestroyAllCams(true);
 	DestroyCam(cam, true);
 	RenderScriptCams(false, false, 0, true, false, 0);
-	camInfo = null;
+	camInfo = null; camAngle = null;
 	cam = null;
 });
 
