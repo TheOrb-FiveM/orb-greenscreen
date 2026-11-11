@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'Bentix (original) / TheOrb Scripts (fork)'
 description 'orb-greenscreen — companion tool for orb_clothing. Based on Bentix fivem-greenscreener (GPL-3.0). See LICENSE and CHANGES.md.'
-version '1.0.3'
+version '1.0.4'
 
 this_is_a_map 'yes'
 

@@ -6,7 +6,10 @@ const fs = require('fs');
 const path = require('path');
 
 const resName = GetCurrentResourceName();
-const mainSavePath = `resources/${resName}/images`;
+// Absolute path of THIS resource, wherever it lives (resources/[orb]/..., etc).
+// Newer FXServer builds only let a resource write inside its own folder, so a
+// hardcoded "resources/<name>" breaks as soon as the resource sits in a [category].
+const mainSavePath = path.join(GetResourcePath(resName), "images");
 const config = JSON.parse(LoadResourceFile(GetCurrentResourceName(), "config.json"));
 
 try { if (!fs.existsSync(mainSavePath)) fs.mkdirSync(mainSavePath, { recursive: true }); } catch(e){}
@@ -70,9 +73,14 @@ function isHairFile(filename) {
 onNet('orb-greenscreen:saveCapture', (filename, type, dataUrl) => {
 	console.log(`[orb-greenscreen] Received: ${filename}, data: ${dataUrl ? String(dataUrl).length : 0} chars`);
 
-	const savePath = path.join(mainSavePath, type);
-	try { if (!fs.existsSync(savePath)) fs.mkdirSync(savePath, { recursive: true }); } catch(e){}
-	const fullFilePath = path.join(savePath, `${filename}.png`);
+	// type/filename come from the client: keep them to plain names so nothing can
+	// be written outside images/.
+	const safeType = String(type || "").replace(/[^a-zA-Z0-9_-]/g, "");
+	const safeName = String(filename || "").replace(/[^a-zA-Z0-9_-]/g, "");
+	if (!safeType || !safeName) { console.error(`[orb-greenscreen] Bad file name: ${type}/${filename}`); return; }
+	const savePath = path.join(mainSavePath, safeType);
+	try { if (!fs.existsSync(savePath)) fs.mkdirSync(savePath, { recursive: true }); } catch(e){ console.error(`[orb-greenscreen] Cannot create ${savePath}: ${e.message}`); return; }
+	const fullFilePath = path.join(savePath, `${safeName}.png`);
 
 	if (!dataUrl) { console.error(`[orb-greenscreen] No data for ${filename}`); return; }
 

@@ -6,6 +6,10 @@ As required by GPL-3.0 Section 5, this file documents the modifications made to 
 
 ## Version history
 
+### 1.0.4
+- **Fixed the server crash when captures start, if the resource sits in a category folder** (for example `resources/[orb]/orb-greenscreen`). Images were saved to a hardcoded `resources/<name>/images`, which points outside the resource as soon as it lives in a `[folder]`. Recent FXServer builds only let a resource write inside its own folder, so every save was refused (`Access to this API has been restricted` / `fs.write ... no device found`) and the server went down. Images are now saved under `GetResourcePath()`, so they land in the resource's own `images/` folder wherever it is installed.
+- File and folder names received from the client are now limited to letters, numbers, `_` and `-`, so a capture can never be written outside `images/`.
+
 ### 1.0.3
 - **Fixed captures that showed the back of the head.** Before every capture the ped was turned with `SetEntityRotation` to the component's `rotation.z` (120 for masks) while it stood frozen with its tasks cleared every millisecond. That turn mostly did not take, which left the ped facing the camera (the picture everyone expected), but every so often it did, and the capture showed the ped from behind. The ped is now posed once, facing the camera, with `SetEntityHeading` verified against `GetEntityHeading`, and never turned again. Angled components (bags, ears, watches) are made by moving the **camera** round the ped by `rotation.z - frontRotation` degrees instead. `frontRotation` (default 120) is new in `config.json`; existing configs keep working unchanged.
 
